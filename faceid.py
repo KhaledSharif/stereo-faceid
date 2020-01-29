@@ -5,6 +5,17 @@ import imutils
 import dlib
 from kalman import KalmanFilter3D
 
+def pearsonr(x, y):
+	xmean = x.mean()
+	ymean = y.mean()
+	xm = x - xmean
+	ym = y - ymean
+	normxm = np.linalg.norm(xm)
+	normym = np.linalg.norm(ym)
+	r = np.dot(xm/normxm, ym/normym)
+	return r
+
+
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
@@ -12,8 +23,10 @@ cap1 = cv2.VideoCapture(0)
 cap2 = cv2.VideoCapture(2)
 
 N = 68
-RESIZE_WIDTH = 400
+RESIZE_WIDTH = 200
 FACE_ID_FILE = "khaled.npz"
+
+face_id = np.load(FACE_ID_FILE)["face_id"]
 
 kalman_filters = []
 for n in range(N):
@@ -24,11 +37,10 @@ for n in range(N):
 points_left_frame = [None] * N
 points_right_frame = [None] * N	
 points_center = [None] * N
-
 points_z = [0.0] * N
-points_z_kalman = [0.0] * N
 
-face_id = []
+points_z_kalman = np.array([0.0] * N).astype(float)
+
 
 while(True):
 	ret, frame = cap1.read()
@@ -73,10 +85,16 @@ while(True):
 				measurement_z=points_z[point_index],
 			)
 			
-	face_id.append([])
+	
 	for point_index in range(N):
 		_, _, z = kalman_filters[point_index].predict()
-		face_id[-1].append(z)
+		points_z_kalman[point_index] = z
+	
+	correlations = []
+	for face_id_row in range(face_id.shape[0]):
+		correlations.append(pearsonr(x=points_z_kalman, y=face_id[face_id_row]))
+
+	print("Correlation = {}".format(np.mean(correlations)))
 
 	hstack = np.hstack((gray1, gray2))
 
@@ -84,9 +102,6 @@ while(True):
 	if cv2.waitKey(1) & 0xFF == ord('q'):
 		break
 
-face_id = np.array(face_id).astype(float)
-np.savez_compressed(FACE_ID_FILE, face_id=face_id)
-print("face id saved with shape {} to file {}".format(face_id.shape, FACE_ID_FILE))
 
 
 
